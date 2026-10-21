@@ -257,3 +257,7 @@ projeto-bi/
     ├── test_transformation.py
     └── test_reconciliation.py
 ```
+
+---
+
+💻 Desenvolvido por [Jéssica Duarte](https://github.com/jessica-mduarte) 
