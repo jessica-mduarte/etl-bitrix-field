@@ -2,7 +2,7 @@
 
 Projeto de dados que extrai informações de CRM do **Bitrix24**(de forma incremental) e ordens de serviço do **Field Control** (por janelas de meses), as organiza em arquitetura medallion em um banco **PostgreSQL** e alimenta o Power BI e relatórios XLSX. 
 
-**Status**: trabalho em progresso. Este documento descreve a arquitetura-alvo, quais foram as decisões tomadas e a responsabilidade de cada camada. Este README.md será atualizado e resumido ao longo do projeto, quando os arquivos .md das demais pastas forem apropriamente atualizadas.
+**Status**: trabalho em progresso. Este documento descreve a arquitetura-alvo, quais foram as decisões tomadas e a responsabilidade de cada camada. Este README.md será atualizado e encurtado ao longo do projeto, quando os arquivos .md das demais pastas forem apropriamente atualizadas.
 
 ## Sumário 
 
