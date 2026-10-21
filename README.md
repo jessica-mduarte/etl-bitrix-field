@@ -94,7 +94,7 @@ Agendamento (cron), logs e restauração: `docs/OPERACAO.md`.
 
 ## Resumo das camadas
 
-A versão não-resumida da arquitetura das camadas pode ser encontrada na pasta [README.md] (https://github.com/jessica-mduarte/etl-bitrix-field/tree/main/db) dentro da pasta db. 
+A versão não-resumida da arquitetura das camadas pode ser encontrada na pasta [`README.md`](https://github.com/jessica-mduarte/etl-bitrix-field/tree/main/db) dentro da pasta db. 
 
 ### bronze
 
