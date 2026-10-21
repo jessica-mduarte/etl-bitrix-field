@@ -90,4 +90,4 @@ O projeto utiliza credenciais separadas para a execução do ETL e para o consum
 
 As permissões definitivas serão configuradas nos scripts de `roles/` e deverão refletir as operações efetivamente necessárias para cada função.
 
-Para detalhes sobre o fluxo completo de dados, as decisões de arquitetura e as configurações do projeto, consulte o `README.md` principal na raíz do repositório.
+Para detalhes sobre o fluxo completo de dados, as decisões de arquitetura e as configurações do projeto, consulte o [`README.md`](https://github.com/jessica-mduarte/etl-bitrix-field/blob/main/README.md) principal na raíz do repositório.
