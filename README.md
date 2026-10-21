@@ -94,6 +94,8 @@ Agendamento (cron), logs e restauração: `docs/OPERACAO.md`.
 
 ## Resumo das camadas
 
+A versão não-resumida da arquitetura das camadas pode ser encontrada na pasta [README.md] (https://github.com/jessica-mduarte/etl-bitrix-field/tree/main/db) dentro da pasta db. 
+
 ### bronze
 
 Armazena os dados brutos retornados pelas APIs do Bitrix24 e do Field em formato JSONB.
