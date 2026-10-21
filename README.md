@@ -6,15 +6,15 @@ Projeto de dados que extrai informações de CRM do **Bitrix24**(de forma increm
 
 ## Sumário 
 
-1. [Objetivo]
-2. [Visão Geral]
-2. [Stacks]
-3. [Decisões de arquitetura]
-4. [Camada Bronze]
-5. [Camada Silver]
-6. [Camada Gold]
-7. [Estrutura do projeto]
-8. [Controle, execução e falhas]
+1. **Objetivo**
+2. **Visão Geral**
+3. **Stacks e configuração**
+4. **Decisões de arquitetura**
+5. **Camada Bronze**
+6. **Camada Silver**
+7. **Camada Gold**
+8. **Estrutura do Projeto**
+
 
 ## Objetivo
 
