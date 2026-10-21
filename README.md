@@ -4,16 +4,16 @@ Projeto de dados que extrai informações de CRM do **Bitrix24**(de forma increm
 
 **Status**: trabalho em progresso. Este documento descreve a arquitetura-alvo, quais foram as decisões tomadas e a responsabilidade de cada camada. Este README.md será atualizado e encurtado ao longo do projeto, quando os arquivos .md das demais pastas forem apropriamente atualizadas.
 
+
 ## Sumário 
 
 1. **Objetivo**
 2. **Visão Geral**
 3. **Stacks e configuração**
 4. **Decisões de arquitetura**
-5. **Camada Bronze**
-6. **Camada Silver**
-7. **Camada Gold**
-8. **Estrutura do Projeto**
+5. **Resumo das camadas**
+6. **Estrutura do Projeto**
+
 
 
 ## Objetivo
@@ -24,6 +24,7 @@ Projeto de dados que extrai informações de CRM do **Bitrix24**(de forma increm
 - Gerar arquivos em .xlsx de resumo claros para envio à gestão. 
 - Garantir que Power BI e relatórios leiam da **mesma fonte**.
 - Escalar com o cresimento do número de cards sem reler a base inteira a cada execução. 
+
 
 ## Visão geral
 
@@ -37,6 +38,7 @@ Projeto de dados que extrai informações de CRM do **Bitrix24**(de forma increm
 | `ctrl` | Controle de execução e qualidade | Python | Python |
 
 Possuímos um único banco e vários schemas. A gold é construída por SQL direto sobre a silver, e as permissões são separadas por schema. 
+
 
 ## Stacks e configuração
 
@@ -72,6 +74,7 @@ cp .env.example .env             # preencha os valores reais
 Agendamento (cron), logs e restauração: `docs/OPERACAO.md`.
 
 
+
 ## Decisões de arquitetura
 
 | Decisão | Motivo | Rever caso: |
@@ -87,98 +90,48 @@ Agendamento (cron), logs e restauração: `docs/OPERACAO.md`.
 | **Sem orquestrador(Airflow, etc)** | Usaremos o cron que já resolve o agendamento. Menos peças para manter | Se surgirem dependências entre muitos jobs |
 | **Menor privilégio por role** | O Power BI e Xlsx. lêem somente a gold. Quem escreve é a role do ETL | - |
 
-## Camada Bronze
 
-**Responsabilidade**
 
-Guarda o JSON mais recente de cada item, exatamente como a API devolveu. É um espelho cru que permite reconstruir a silver sem chamar a API novamente. Guarda todos os campos, inclusive aqueles que o projeto ainda não usa.
+## Resumo das camadas
 
-| Regra | Descrição |
-|---|---|
-| Uma linha por item | A chave é (`source, item_id`). A tabela cresce com o número de itens, não com as alterações |
-| Margem inofensiva | Um item que volta duas vezes por causa da margem é apenas regravado com o mesmo conteúdo |
-| Sem restrições | Sem FK e sem tipos além de `jsonb`, para garantir que a carga nunca falhará por dependência |
-| Carga inicial | O modo `full` extrai sem filtro de data e grava todos os itens |
+### bronze
 
-**Estrutura** 
-```
-CREATE TABLE bronze.bitrix_raw (
-    source         text        NOT NULL,   -- 'comercial', 'edv', 'instalacoes', 'operacoes', 'users', 'teams', 'stages'
-    item_id        bigint      NOT NULL,   -- id do registro no Bitrix
-    source_method  text        NOT NULL,   -- 'crm.item.list', 'crm.deal.list', 'user.get', ...
-    entity_type_id int,                    -- NULL para usuários e times
-    payload        jsonb       NOT NULL,   -- resposta completa, sem alterar
-    batch_id       uuid        NOT NULL,   -- último lote que gravou este item
-    extracted_at   timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (source, item_id)
-);
+Armazena os dados brutos retornados pelas APIs do Bitrix24 e do Field em formato JSONB.
 
-CREATE INDEX ON bronze.bitrix_raw (batch_id);
-```
+- Preserva os campos retornados pelas fontes sem exigir um mapeamento prévio de todos eles.
+- Permite reconstruir a camada Silver sem consultar novamente a API, utilizando o conteúdo bruto mais recente armazenado.
+- Utiliza operações de upsert para atualizar os registros existentes.
+- Não utiliza chaves estrangeiras para não criar dependências desnecessárias durante a ingestão.
 
-**Passo a passo: Bitrix24 (modo incremental)** 
-1. **Ler a marca** da fonte em `ctrl.marcas`(data/hora da última extração bem-sucedida).
-2. **Montar filtro de modificação**: itens alterados depois de `marca - margem`.
-3. **Extrair** da API com paginação e respeito ao llimite de requisições, sem `select` restritivo, para guardar todos os campos. 
-4. **Gravar com upsert** (`INSERT ... ON CONFLICT (source, item_id) DO UPDATE`), atualizando `payload`, `batch_id` e `extracted_at`.
-5. **Registrar** `bronze_status = OK` em `ctrl.execucoes` e avançar a marca da fonte. 
+### silver
 
-**Passo a passo: Field Control (por janela)**
-1.**Calcula** a janela: do primeiro dia do mês mai antigo da janela (FIELD_JANELA_MESES) até hoje.
-2. **Extrai** as Ordens de Serviço que possuem a tag de manutenção preventiva. O filtro por tag e data é aplicado na API (quando ela suportar), ou no Python (quando não suportar).
-3. **Grava**  com upsert em `bronze.raw_items` com `source = 'field_os`.
-4. **Registra** `bronze_status = OK`. Não há marca a avançar, a próxima execução refaz a janela inteira.
+Armazena os dados padronizados e tratados, representando o estado atual dos registros.
 
-## Camada Silver
+- Converte os dados brutos para tipos adequados ao PostgreSQL.
+- Padroniza nomes de campos e trata campos personalizados.
+- Mantém relacionamentos entre entidades por meio de chaves primárias e estrangeiras, quando aplicável. 
+- Utiliza upsert para permitir o reprocessamento idempotente dos dados.
+- Mantém registros que deixaram de existir na origem marcados como excluídos logicamente, quando aplicável. 
 
-**Responsabilidade**
+### gold
 
-Transformar os dados brutos em dados confiáveis e consultáveis, ou seja, tipados, padronizados, sem duplicatas e com relacionamentos. Guarda somente o estado atual de cada card. É onde mora a qualidade dos dados, e é a base do cálculo do faturamento.
+Disponibiliza os dados preparados para consumo pelo Power BI e pelos relatórios Excel.
 
-| Regra | Descrição |
-|---|---|
-| Uma linha por entidade | Chave primária por tabela (`card_id`, ou `entity_type_id` + `card_id` se unificar fontes) |
-| Idempotência | Reprocessar um lote produz o mesmo resultado |
-| Nomes padronizados | `created_at`, `updated_at`, `moved_at`, `opened_at`, `closed_at`, `deadline_at` |
+- Contém views SQL com indicadores e informações consolidadas para a gestão. 
+- Consulta os dados tratados da Silver.
+- É a única camada de dados acessada pelas ferramentas de consumo. 
+- Utiliza views comuns inicialmente, sem materialização. 
 
-**Tabelas previstas**
-| Tabela | Conteúdo |
-|---|---|
-| `silver.dim_users` | Usuários (id, nome, cargo, departamento, `is_active`). Usuários desligados não são apagados. |
-| `silver.user_goals` |Metas por usuário anuais e mensais |
-| `silver.dim_teams` | Times (Silver e Black) | 
-| `silver.dim_stages` | Etapas: código, nome, funil e semântica (em andamento, ganho ou perdido)
-| `silver. comercial_cards`, `edv_cards`, `instalacoes_cards`, `operacoes_cards` | Estado atual de cada card, padronizado e limpo |
-| `silver.field_os` | Ordens de serviço da tag: id da OS, tag, status, data de conclusão e `is_deleted`. |
+### ctrl 
 
-Colunas de auditoria nas tabelas de cards: `batch_id`, `loaded_at` e `is_deleted`.
+Armazena informações de controle da execução do ETL.
 
-**Passo a passo**
-1. **Seleciona** os lotes com `silver.status` pendente em `ctrl.execucoes`.
-2. **Lê** da camada bronze, em blocos(`chunksize`), as linhas desses lotes. Sem carregar a camada bronze inteira na memória.
-3. **Normaliza** o JSON com pandas e aplica o mapeamento `config/field_mapping`: renomear, converter tipos, traduzir ids de lista para texto e tratar campos personalizados.
-4. **Valida** ids duplicados, nulos em campos obrigatórios, datas, ids de usuário ou etapas sem correspondência nas dimensões.
-5. **Upsert** do estado atual com `INSERT ... ON CONFLICT DO UPDATE`. Reprocessar o mesmo lote não duplica nada.
-6. **Field Control**: as OS que estavam na silver dentro da janela e não voltaram da chamada da API (porque foram canceladas, excluídas ou perderam a tag) recebem `is_deleted = true`.
-6. **Registra** `silver_status = OK` e as contagens em `ctrl_execucoes`.
+- Registra os lotes processados e o status de cada camada.
+- Mantém as marcas utilizadas para controlar a extração incremental.
+- Permite identificar falhas e reprocessar dados a partir da Bronze, quando possível. 
+- Armazena informações necessárias ao monitoramento da execução.
 
-**Reconciliação de exclusões do Bitrix (modo `reconcile`)**
 
-1. Extrai só os ids de cada fonte no Bitrix (`select[]=id`).
-2. Compara com os ids ativos da silver.
-3. Ids que não existem mais no Bitrix recebem `is_deleted = true`. Nada é apagado fisicamente.
-
-## Camada Gold
- **Responsabilidade** 
-
- Entregar todos os dados, prontos para consumo. É a única camada que o Power BI e XLSXs enxergam, e guarda o único histórico do projeto. 
-
-| Regra | Descrição |
-|---|---|
-| Não modifica dados | Todo o processo de limpeza e padronização já ocorreu na camada Silver. |
-| Não contém dados além do necessário | Armazena somente os dados que devem ser exibidos no Power BI e XLSX. |
-| Janela de atualização | A cada execução, a camada recalcula apenas os meses mais recentes. Meses fora da janela ficam com `fechado = true` e não são tocados. |
-| Carga inicial | Calcula todos os meses a partir da camada silver e fecha os que estiverem fora da janela. |
 
 ## Estrutura do projeto
 
